@@ -1,0 +1,253 @@
+FROM ubuntu:22.04
+
+LABEL maintainer="Project Ocean Team"
+LABEL description="Project Ocean: High-Throughput NGINX + ModSecurity Reverse Proxy"
+LABEL version="1.0"
+
+# ============================================================================
+# LAYER 1: System Updates & Dependencies
+# ============================================================================
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    gnupg2 \
+    lsb-release \
+    ubuntu-keyring \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# ============================================================================
+# LAYER 2: Add NGINX Official Repository
+# ============================================================================
+
+RUN curl https://nginx.org/keys/nginx_signing.key | gpg --dearmor | tee /usr/share/keyrings/nginx-archive-keyring.gpg >/dev/null && \
+    echo "deb [signed-by=/usr/share/keyrings/nginx-archive-keyring.gpg] http://nginx.org/packages/ubuntu `lsb_release -cs` nginx" | tee /etc/apt/sources.list.d/nginx.list
+
+# ============================================================================
+# LAYER 3: Install NGINX with ModSecurity Module
+# ============================================================================
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    nginx \
+    libnginx-mod-modsecurity \
+    && rm -rf /var/lib/apt/lists/*
+
+# ============================================================================
+# LAYER 4: Install OWASP ModSecurity Core Rule Set (CRS)
+# ============================================================================
+
+# Clone OWASP CRS from GitHub (production: use specific version tags)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN git clone https://github.com/coreruleset/coreruleset.git /usr/share/modsecurity-crs && \
+    cd /usr/share/modsecurity-crs && \
+    mv crs-setup.conf.example crs-setup.conf && \
+    chown -R www-data:www-data /usr/share/modsecurity-crs
+
+# ============================================================================
+# LAYER 5: Create ModSecurity Log Directory
+# ============================================================================
+
+RUN mkdir -p /var/log/modsecurity && \
+    chown -R www-data:www-data /var/log/modsecurity && \
+    chmod 750 /var/log/modsecurity
+
+# ============================================================================
+# LAYER 6: Configure NGINX Main Configuration File
+# ============================================================================
+
+# Copy optimized nginx.conf (include performance tuning)
+# This can be provided at build time or use a template
+RUN cat > /etc/nginx/nginx.conf << 'NGINX_CONF'
+user www-data;
+worker_processes auto;
+worker_rlimit_nofile 65535;
+pid /run/nginx.pid;
+
+events {
+    worker_connections 20480;
+    use epoll;
+    multi_accept on;
+}
+
+http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+
+    # Logging (minimal for high throughput)
+    access_log /var/log/nginx/access.log combined buffer=32k flush=5m;
+    error_log /var/log/nginx/error.log warn;
+
+    # Performance tuning (see performance.conf for details)
+    sendfile on;
+    tcp_nopush on;
+    tcp_nodelay on;
+    keepalive_timeout 65;
+    keepalive_requests 1000;
+    types_hash_max_size 2048;
+    client_max_body_size 10M;
+
+    # Gzip compression (optional, depends on throughput requirements)
+    # gzip on;
+    # gzip_vary on;
+    # gzip_comp_level 6;
+    # gzip_types text/plain text/css application/json application/javascript;
+
+    # Include additional configuration
+    include /etc/nginx/conf.d/*.conf;
+    include /etc/nginx/sites-enabled/*;
+}
+NGINX_CONF
+
+# ============================================================================
+# LAYER 7: Configure Default Site with ModSecurity
+# ============================================================================
+
+RUN cat > /etc/nginx/sites-available/default << 'DEFAULT_SITE'
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+
+    server_name _;
+    server_tokens off;  # Hide NGINX version
+
+    # Health check endpoint (popular on Kubernetes)
+    location /health {
+        access_log off;
+        return 200 "ok";
+        add_header Content-Type text/plain;
+    }
+
+    # Proxy example (customize per your backend)
+    location / {
+        proxy_pass http://backend;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # ModSecurity audit log (optional, if verbose logging needed)
+    # location /modsec_status {
+    #     access_log off;
+    #     return 200 "ModSecurity Enabled";
+    #     add_header Content-Type text/plain;
+    # }
+}
+
+upstream backend {
+    server 127.0.0.1:8080 max_fails=3 fail_timeout=30s;
+    keepalive 32;
+}
+DEFAULT_SITE
+
+ln -sf /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default || true
+
+# ============================================================================
+# LAYER 8: Enable ModSecurity in NGINX
+# ============================================================================
+
+# Create ModSecurity configuration directory
+RUN mkdir -p /etc/nginx/modsecurity
+
+# Copy ModSecurity default configuration
+RUN cat > /etc/nginx/modsecurity/modsec_default.conf << 'MODSEC_CONF'
+# ModSecurity rules and configuration
+# (In production, mount this via ConfigMap or COPY from build)
+SecRuleEngine DetectionOnly
+SecAuditEngine RelevantOnly
+SecAuditLog /var/log/modsecurity/audit.log
+SecAnomalyScoreThreshold 5
+
+# Load OWASP CRS
+Include /etc/nginx/modsecurity/crs-setup.conf
+Include /usr/share/modsecurity-crs/rules/REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf
+Include /usr/share/modsecurity-crs/rules/REQUEST-901-INITIALIZATION.conf
+Include /usr/share/modsecurity-crs/rules/REQUEST-905-COMMON-EXCEPTIONS.conf
+Include /usr/share/modsecurity-crs/rules/REQUEST-910-IP-REPUTATION.conf
+Include /usr/share/modsecurity-crs/rules/REQUEST-911-METHOD-ENFORCEMENT.conf
+Include /usr/share/modsecurity-crs/rules/REQUEST-912-DOS-PROTECTION.conf
+Include /usr/share/modsecurity-crs/rules/REQUEST-913-SCANNER-DETECTION.conf
+Include /usr/share/modsecurity-crs/rules/REQUEST-920-PROTOCOL-ENFORCEMENT.conf
+Include /usr/share/modsecurity-crs/rules/REQUEST-921-PROTOCOL-ATTACK.conf
+Include /usr/share/modsecurity-crs/rules/REQUEST-930-APPLICATION-ATTACK-LFI.conf
+Include /usr/share/modsecurity-crs/rules/REQUEST-931-APPLICATION-ATTACK-RFI.conf
+Include /usr/share/modsecurity-crs/rules/REQUEST-932-APPLICATION-ATTACK-RCE.conf
+Include /usr/share/modsecurity-crs/rules/REQUEST-933-APPLICATION-ATTACK-PHP.conf
+Include /usr/share/modsecurity-crs/rules/REQUEST-934-APPLICATION-ATTACK-GENERIC.conf
+Include /usr/share/modsecurity-crs/rules/REQUEST-941-APPLICATION-ATTACK-XSS.conf
+Include /usr/share/modsecurity-crs/rules/REQUEST-942-APPLICATION-ATTACK-SQLI.conf
+Include /usr/share/modsecurity-crs/rules/REQUEST-943-APPLICATION-ATTACK-SESSION-FIXATION.conf
+MODSEC_CONF
+
+# ============================================================================
+# LAYER 9: Enable ModSecurity Module in NGINX Configuration
+# ============================================================================
+
+RUN cat >> /etc/nginx/nginx.conf << 'MODSEC_ENABLE'
+
+# ModSecurity Module
+load_module modules/ngx_http_modsecurity_module.so;
+
+# In http block:
+#   modsecurity on;
+#   modsecurity_rules_file /etc/nginx/modsecurity/modsec_default.conf;
+MODSEC_ENABLE
+
+# ============================================================================
+# LAYER 10: Obscure Server Signature (Rewrite to "Ocean")
+# ============================================================================
+
+# Extract NGINX binary location and patch the Server header signature
+RUN NGINX_BIN=$(which nginx) && \
+    sed -i 's/Server: nginx/Server: Ocean/g' "$NGINX_BIN" && \
+    echo "[✓] NGINX binary patched: Server header rewritten to 'Ocean'"
+
+# Verify the patch (optional, for debugging)
+# RUN strings $(which nginx) | grep -i "Server:" || echo "Signature may be in compiled form"
+
+# ============================================================================
+# LAYER 11: Create Health Check Script
+# ============================================================================
+
+RUN cat > /usr/local/bin/health-check.sh << 'HEALTH_CHECK'
+#!/bin/bash
+# Kubernetes liveness/readiness probe
+# Returns 0 if NGINX is healthy, 1 otherwise
+
+if curl -s -f http://localhost/health > /dev/null 2>&1; then
+    exit 0
+else
+    exit 1
+fi
+HEALTH_CHECK
+
+chmod +x /usr/local/bin/health-check.sh
+
+# ============================================================================
+# LAYER 12: Expose Ports & Set Entrypoint
+# ============================================================================
+
+EXPOSE 80 443
+
+# Run NGINX in foreground (required for container)
+# Use spawn-fcgi or similar for application server (if needed)
+CMD ["nginx", "-g", "daemon off;"]
+
+# ============================================================================
+# BUILD NOTES
+# ============================================================================
+# Build: docker build -t ocean:latest -f Dockerfile.ubuntu .
+# Run:   docker run -d -p 80:80 --name ocean ocean:latest
+# Test:  docker exec ocean curl -H "Server" http://localhost/health
+# Shell: docker exec -it ocean /bin/bash
+#
+# Production Notes:
+# - Mount ConfigMaps for nginx.conf & modsecurity configs (avoid rebuilding)
+# - Use health-check.sh for K8s readiness/liveness probes
+# - Set resource limits: CPU 1000m, memory 512Mi per container
+# - Enable ModSecurity audit log export to centralized logging (ELK, etc.)
+# - Monitor ModSecurity anomaly scores via Prometheus metrics
+#

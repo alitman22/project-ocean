@@ -1,0 +1,216 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: ocean-svc
+  namespace: default
+  labels:
+    app: ocean
+    tier: proxy
+spec:
+  # ========================================================================
+  # SERVICE TYPE
+  # ========================================================================
+  # LoadBalancer: Exposes service externally via cloud provider load balancer
+  #   - AWS: Creates ELB/NLB, assigns external IP
+  #   - Azure: Creates Azure Load Balancer, assigns public IP
+  #   - GCP: Creates Cloud Load Balancer, assigns external IP
+  #   - On-premise (MetalLB): Assigns IP from pool, advertises via BGP/ARP
+  #
+  # ClusterIP: Exposes service only within cluster (default)
+  #   - Used for internal service discovery
+  #   - No external access
+  #
+  # NodePort: Exposes service on each node's static port (30000-32767)
+  #   - External clients connect to <node-IP>:<node-port>
+  #   - Useful for on-prem/development (simpler than LoadBalancer)
+  
+  type: LoadBalancer
+  
+  # ========================================================================
+  # SELECTOR
+  # ========================================================================
+  # Service routes traffic to pods matching these labels
+  # Must match Deployment.spec.template.metadata.labels
+  
+  selector:
+    app: ocean
+    tier: proxy
+  
+  # ========================================================================
+  # PORT MAPPING
+  # ========================================================================
+  # Exposes container ports to clients
+  
+  ports:
+    - name: http
+      protocol: TCP
+      # Port: External port clients connect to (e.g., 80 for HTTP)
+      port: 80
+      # TargetPort: Pod container port to route traffic to
+      targetPort: 80
+      # nodePort: (LoadBalancer/NodePort types) Static port on each node
+      # If not specified, Kubernetes assigns random port in 30000-32767 range
+      # For ClusterIP/LoadBalancer, typically omitted (let cloud provider assign)
+    
+    # HTTPS (optional, uncomment if SSL termination added to NGINX)
+    # - name: https
+    #   protocol: TCP
+    #   port: 443
+    #   targetPort: 443
+  
+  # ========================================================================
+  # SESSION AFFINITY (Sticky Sessions)
+  # ========================================================================
+  # sessionAffinity: ClientIP keeps client traffic to same pod
+  #   - ClientIP: Route all requests from same client IP to same pod
+  #   - None: Load balance across all pods (default, stateless)
+  #
+  # For stateless reverse proxies: use None (default)
+  # For stateful apps: use ClientIP
+  
+  sessionAffinity: None
+  
+  # ========================================================================
+  # LOAD BALANCER CONFIGURATION
+  # ========================================================================
+  
+  # loadBalancerSourceRanges: Restrict traffic to specific source IPs
+  # If empty: all sources allowed (security risk in production)
+  # Example: Allow only corporate VPN + admin office
+  # loadBalancerSourceRanges:
+  #   - 203.0.113.0/24      # Corporate VPN
+  #   - 198.51.100.0/24     # Admin office
+  
+  # externalTrafficPolicy: How to handle traffic on non-target nodes
+  #   - Cluster: Route to any node, then to any pod (lower latency, potential cross-zone traffic)
+  #   - Local: Route only to pods on same node (preserves source IP, may have uneven load)
+  # Default: Cluster (typically fine for most workloads)
+  externalTrafficPolicy: Cluster
+  
+  # ========================================================================
+  # HEALTH CHECK / ENDPOINT SELECTION
+  # ========================================================================
+  # publishNotReadyAddresses: Include pods not passing readinessProbe
+  #   - true: All pods included (even if not ready)
+  #   - false: Only ready pods included (default, recommended)
+  publishNotReadyAddresses: false
+
+---
+# Service Behavior:
+#
+# 1. Creation:
+#    - kubectl apply -f service.yaml
+#    - Service gets ClusterIP (internal) 10.x.x.x (stable, never changes)
+#    - Kube-proxy sets up iptables rules to forward traffic to pod IPs
+#    - If type: LoadBalancer, cloud provider creates external load balancer
+#
+# 2. LoadBalancer (most common for external access):
+#    - External IP assigned (e.g., 203.0.113.50 for cloud, metallb IP for on-prem)
+#    - EXTERNAL-IP shown in: kubectl get svc ocean-svc
+#    - Clients connect to: http://203.0.113.50 (external IP)
+#    - Traffic flows: client -> load balancer -> service -> kube-proxy -> pod
+#
+# 3. DNS:
+#    - Internal DNS name: ocean-svc.default.svc.cluster.local
+#    - Short name (in same namespace): ocean-svc
+#    - Used by other pods to discover service: curl http://ocean-svc
+#    - For external clients: use EXTERNAL-IP (not DNS name, varies by cloud provider)
+#
+# 4. Endpoint Selection:
+#    - Kube-proxy watches pod readinessProbe status
+#    - Pods not ready (readiness failing) removed from endpoints
+#    - Liveness failures don't affect service routing (pod restarted, but may still serve briefly)
+#    - Result: Traffic never goes to completely broken pods
+#
+# 5. Traffic Distribution:
+#    - externalTrafficPolicy: Cluster -> clients routed to any node, then any pod
+#    - externalTrafficPolicy: Local -> clients routed to pods on same node only
+#    - For 2+ pods on different nodes: Cluster provides better load balancing
+#    - For single pod per node: Local preserves source IP (app sees real client IP)
+#
+# Example DNS Queries:
+#   - From pod in default namespace: nslookup ocean-svc
+#     Returns: 10.x.x.x (ClusterIP)
+#   - From pod in other namespace: nslookup ocean-svc.default
+#     Returns: 10.x.x.x (ClusterIP)
+#   - From external client: Uses EXTERNAL-IP or DNS name (cloud-dependent)
+#     E.g., ocean.example.com -> 203.0.113.50 (via cloud DNS)
+#
+# On-Premises (MetalLB) Setup:
+#   1. Install MetalLB: kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/main/manifests/namespace.yaml
+#   2. Configure IP pool: kubectl apply -f - << EOF
+#      apiVersion: metallb.io/v1beta1
+#      kind: IPAddressPool
+#      metadata:
+#        name: default
+#        namespace: metallb-system
+#      spec:
+#        addresses:
+#        - 192.168.1.200-192.168.1.210  # Pool of IPs for LoadBalancer services
+#      EOF
+#   3. Service gets external IP: kubectl get svc ocean-svc
+#      EXTERNAL-IP: 192.168.1.200 (assigned from pool)
+#   4. Clients connect to: http://192.168.1.200
+#
+# Debugging Service Issues:
+#
+#   Check service status:
+#     kubectl get svc ocean-svc
+#     kubectl describe svc ocean-svc
+#   
+#   Check endpoints (pods service routes to):
+#     kubectl get endpoints ocean-svc
+#     kubectl describe endpoints ocean-svc
+#   
+#   Verify pod is in endpoints:
+#     kubectl get pods -l app=ocean -o wide  # Show pod IPs
+#     kubectl get endpoints ocean-svc        # Compare pod IPs in endpoints
+#   
+#   Test service connectivity (from pod):
+#     kubectl run -it --image=ubuntu test -- bash
+#     curl http://ocean-svc  # Should reach NGINX
+#   
+#   Check load balancer IP (if type: LoadBalancer):
+#     kubectl get svc ocean-svc -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+#   
+#   Monitor traffic distribution:
+#     kubectl logs -f -l app=ocean  # Check logs from all pods
+#     watch 'kubectl get endpoints ocean-svc'  # Watch endpoint updates
+#
+# Production Recommendations:
+#
+#   1. Use type: LoadBalancer for external traffic (preferred, cloud-agnostic)
+#   2. Add loadBalancerSourceRanges for security (restrict to known IPs)
+#   3. Use externalTrafficPolicy: Cluster (simpler load distribution)
+#   4. Enable readiness checks in Deployment (ensure only healthy pods receive traffic)
+#   5. Use NetworkPolicy to restrict traffic flows:
+#      - Allow: ingress from load balancer, egress to backends
+#      - Deny: inter-pod traffic if not needed (microsegmentation)
+#   6. Configure ingress (if needing path-based routing, SSL termination, etc.)
+#      - Service alone doesn't support /api vs /web path routing
+#      - Use Ingress resource for advanced L7 routing
+#
+# Ingress Example (for path-based routing):
+#
+#   apiVersion: networking.k8s.io/v1
+#   kind: Ingress
+#   metadata:
+#     name: ocean-ingress
+#   spec:
+#     ingressClassName: nginx  # or cloud provider ingress class
+#     rules:
+#       - host: api.example.com
+#         http:
+#           paths:
+#             - path: /
+#               pathType: Prefix
+#               backend:
+#                 service:
+#                   name: ocean-svc
+#                   port:
+#                     number: 80
+#
+# This allows:
+#   - Clients connect to api.example.com (DNS points to ingress external IP)
+#   - Ingress terminates SSL, routes to Service
+#   - Service load balances to pod replicas

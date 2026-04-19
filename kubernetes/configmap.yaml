@@ -1,0 +1,222 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ocean-config
+  namespace: default
+  labels:
+    app: ocean
+    version: "1.0"
+data:
+  # ========================================================================
+  # NGINX MAIN CONFIGURATION
+  # ========================================================================
+  # This is the central nginx.conf that will be mounted into the container
+  # at /etc/nginx/nginx.conf
+  
+  nginx.conf: |
+    user www-data;
+    worker_processes auto;
+    worker_rlimit_nofile 65535;
+    pid /run/nginx.pid;
+    
+    # Load ModSecurity module
+    load_module modules/ngx_http_modsecurity_module.so;
+    
+    events {
+        worker_connections 20480;
+        use epoll;
+        multi_accept on;
+    }
+    
+    http {
+        include /etc/nginx/mime.types;
+        default_type application/octet-stream;
+    
+        # Logging (optimized for high throughput)
+        access_log /var/log/nginx/access.log combined buffer=32k flush=5m;
+        error_log /var/log/nginx/error.log warn;
+    
+        # Performance tuning (sendfile + tcp flags for maximum throughput)
+        sendfile on;
+        tcp_nopush on;
+        tcp_nodelay on;
+        keepalive_timeout 65;
+        keepalive_requests 1000;
+        types_hash_max_size 2048;
+        client_max_body_size 10M;
+    
+        # File descriptor & metadata caching
+        open_file_cache max=200000 inactive=20s;
+        open_file_cache_valid 30s;
+        open_file_cache_min_uses 2;
+    
+        # Buffer tuning for reverse proxy
+        client_body_buffer_size 128K;
+        proxy_buffer_size 4K;
+        proxy_buffers 8 4K;
+        proxy_busy_buffers_size 8K;
+    
+        # Timeouts
+        client_header_timeout 12s;
+        client_body_timeout 12s;
+        send_timeout 10s;
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+    
+        # Include site configurations
+        include /etc/nginx/conf.d/*.conf;
+        include /etc/nginx/sites-enabled/*;
+    }
+
+  # ========================================================================
+  # DEFAULT SITE CONFIGURATION
+  # ========================================================================
+  # Virtual host configuration with health check, proxy setup, and ModSecurity
+  
+  default-site.conf: |
+    server {
+        listen 80 default_server;
+        listen [::]:80 default_server;
+    
+        server_name _;
+        server_tokens off;
+    
+        # Enable ModSecurity for this server block
+        modsecurity on;
+        modsecurity_rules_file /etc/nginx/modsecurity/modsec_default.conf;
+    
+        # Kubernetes health check (used by liveness/readiness probes)
+        location /health {
+            access_log off;
+            return 200 "ok";
+            add_header Content-Type text/plain;
+        }
+    
+        # Kubernetes metrics endpoint (future Prometheus exporter)
+        location /metrics {
+            access_log off;
+            return 204;  # No content (placeholder for metrics exporter)
+        }
+    
+        # Main proxy: forward to backend upstream
+        location / {
+            proxy_pass http://backend;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_redirect off;
+            
+            # Persistent upstream connections (pool for low latency)
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+        }
+    }
+    
+    # Upstream backend (default: loop back to localhost:8080 for testing)
+    # In production: replace with actual backend service addresses
+    upstream backend {
+        server 127.0.0.1:8080 max_fails=3 fail_timeout=30s;
+        keepalive 32;
+        keepalive_requests 200;
+        keepalive_timeout 60;
+    }
+
+  # ========================================================================
+  # MODSECURITY CONFIGURATION
+  # ========================================================================
+  # Override template with production settings (DetectionOnly initially)
+  
+  modsec_default.conf: |
+    # ModSecurity OWASP Core Rule Set Configuration
+    # Phase 1: Request headers & initial processing
+    
+    # Engine mode: DetectionOnly logs threats without blocking (safe for initial deployment)
+    # Change to 'On' after 1-2 weeks of baseline validation
+    SecRuleEngine DetectionOnly
+    
+    # Audit logging: RelevantOnly (log only when rules match)
+    # Alternative: On (log all), Off (no logging)
+    SecAuditEngine RelevantOnly
+    
+    # Audit log output type: Concurrent (individual files per transaction)
+    SecAuditLogType Concurrent
+    
+    # Audit log path (mounted from /var/log/modsecurity via PVC)
+    SecAuditLog /var/log/modsecurity/audit.log
+    
+    # Anomaly score threshold (request-side)
+    # If total score >= 5, request is flagged/blocked (in On mode)
+    # Conservative: increase to 10-20 to reduce false positives
+    SecAnomalyScoreThreshold 5
+    
+    # Anomaly score threshold (response-side)
+    # Higher tolerance for responses (less predictable)
+    SecAnomalyScoreThresholdOutbound 25
+    
+    # Performance tuning
+    SecRequestBodyAccess On
+    SecRequestBodyLimit 10485760  # 10MB max request body
+    SecResponseBodyAccess Off     # Disable for high throughput (costly)
+    SecCollectionTimeout 3600     # 1 hour
+    
+    # Load OWASP CRS rules from installed location
+    # Setup file
+    Include /usr/share/modsecurity-crs/crs-setup.conf
+    
+    # Core rule files
+    Include /usr/share/modsecurity-crs/rules/REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf
+    Include /usr/share/modsecurity-crs/rules/REQUEST-901-INITIALIZATION.conf
+    Include /usr/share/modsecurity-crs/rules/REQUEST-905-COMMON-EXCEPTIONS.conf
+    Include /usr/share/modsecurity-crs/rules/REQUEST-910-IP-REPUTATION.conf
+    Include /usr/share/modsecurity-crs/rules/REQUEST-911-METHOD-ENFORCEMENT.conf
+    Include /usr/share/modsecurity-crs/rules/REQUEST-912-DOS-PROTECTION.conf
+    Include /usr/share/modsecurity-crs/rules/REQUEST-913-SCANNER-DETECTION.conf
+    Include /usr/share/modsecurity-crs/rules/REQUEST-920-PROTOCOL-ENFORCEMENT.conf
+    Include /usr/share/modsecurity-crs/rules/REQUEST-921-PROTOCOL-ATTACK.conf
+    Include /usr/share/modsecurity-crs/rules/REQUEST-930-APPLICATION-ATTACK-LFI.conf
+    Include /usr/share/modsecurity-crs/rules/REQUEST-931-APPLICATION-ATTACK-RFI.conf
+    Include /usr/share/modsecurity-crs/rules/REQUEST-932-APPLICATION-ATTACK-RCE.conf
+    Include /usr/share/modsecurity-crs/rules/REQUEST-933-APPLICATION-ATTACK-PHP.conf
+    Include /usr/share/modsecurity-crs/rules/REQUEST-934-APPLICATION-ATTACK-GENERIC.conf
+    Include /usr/share/modsecurity-crs/rules/REQUEST-941-APPLICATION-ATTACK-XSS.conf
+    Include /usr/share/modsecurity-crs/rules/REQUEST-942-APPLICATION-ATTACK-SQLI.conf
+    Include /usr/share/modsecurity-crs/rules/REQUEST-943-APPLICATION-ATTACK-SESSION-FIXATION.conf
+    Include /usr/share/modsecurity-crs/rules/REQUEST-949-BLOCKING-EVALUATION.conf
+    Include /usr/share/modsecurity-crs/rules/RESPONSE-950-DATA-LEAKAGES.conf
+    Include /usr/share/modsecurity-crs/rules/RESPONSE-951-DATA-LEAKAGES-SQL.conf
+    Include /usr/share/modsecurity-crs/rules/RESPONSE-952-DATA-LEAKAGES-JAVA.conf
+    Include /usr/share/modsecurity-crs/rules/RESPONSE-953-DATA-LEAKAGES-PHP.conf
+    Include /usr/share/modsecurity-crs/rules/RESPONSE-954-DATA-LEAKAGES-IIS.conf
+    Include /usr/share/modsecurity-crs/rules/RESPONSE-959-BLOCKING-EVALUATION.conf
+    
+    # Custom exclusions per application (add as needed)
+    # Example: Exclude /health endpoint from scanner detection
+    # SecRule REQUEST_URI "@streq /health" "id:1001,phase:2,pass,skip:999"
+
+  # ========================================================================
+  # CRS SETUP (Initialization Rules)
+  # ========================================================================
+  # This is normally auto-generated by CRS, but we provide a minimal version
+  
+  crs-setup.conf: |
+    # OWASP Core Rule Set v4.0 Setup Configuration
+    # Minimal setup for Project Ocean deployment
+    
+    # Paranoia level: 1 (default blocking rules), 1-4 (increasingly strict)
+    SecAction "id:900000,phase:1,nolog,pass,t:none,setvar:tx.paranoia_level=1"
+    
+    # Execute phase rules before CRS
+    SecAction "id:900001,phase:1,nolog,pass,t:none"
+
+---
+# This ConfigMap is referenced by the Deployment via volumeMounts
+# All files are mounted into the container's /etc/nginx/ and /etc/nginx/modsecurity/ directories
+# 
+# To update configurations after deployment:
+#   kubectl edit configmap ocean-config
+#   kubectl rollout restart deployment ocean
+#
+# To validate NGINX syntax without restarting:
+#   kubectl exec <pod> -- nginx -t

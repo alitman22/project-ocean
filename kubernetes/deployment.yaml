@@ -1,0 +1,321 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ocean
+  namespace: default
+  labels:
+    app: ocean
+    tier: proxy
+    version: "1.0"
+spec:
+  # ========================================================================
+  # REPLICA CONFIGURATION
+  # ========================================================================
+  # Initial replica count: 2 pods
+  # Auto-scaling is handled by HorizontalPodAutoscaler (HPA)
+  # HPA will scale between 2-10 replicas based on CPU/memory metrics
+  replicas: 2
+  
+  # ========================================================================
+  # ROLLOUT STRATEGY
+  # ========================================================================
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # maxUnavailable: 25% of pods can be temporarily unavailable during update
+      # Default: 25% (1 out of 2 pods in this case)
+      maxUnavailable: 1
+      # maxSurge: 25% extra pods during update for fast rollout
+      maxSurge: 1
+  
+  # ========================================================================
+  # SELECTOR & LABELS
+  # ========================================================================
+  selector:
+    matchLabels:
+      app: ocean
+      tier: proxy
+  
+  # ========================================================================
+  # POD TEMPLATE
+  # ========================================================================
+  template:
+    metadata:
+      labels:
+        app: ocean
+        tier: proxy
+        version: "1.0"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "80"
+        prometheus.io/path: "/metrics"
+    
+    spec:
+      # ====================================================================
+      # SCHEDULING & AFFINITY
+      # ====================================================================
+      
+      # Pod anti-affinity: spread pods across different nodes for high availability
+      # Kubernetes scheduler will prefer placing new pods on different nodes
+      affinity:
+        podAntiAffinity:
+          # preferredDuringSchedulingIgnoredDuringExecution = soft requirement
+          # If no nodes available, pod will still be scheduled (vs. hard requirement)
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                        - ocean
+                topologyKey: kubernetes.io/hostname
+      
+      # ====================================================================
+      # SECURITY CONTEXT
+      # ====================================================================
+      
+      # Pod-level security context (applies to all containers)
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 33  # www-data user ID
+        fsGroup: 33
+        seccompProfile:
+          type: RuntimeDefault
+      
+      # ====================================================================
+      # CONTAINERS
+      # ====================================================================
+      
+      containers:
+        - name: ocean
+          # Ocean Docker image (built from docker/Dockerfile.ubuntu)
+          # In production, push to private registry: gcr.io/<project>/ocean:latest
+          image: ocean:latest
+          imagePullPolicy: IfNotPresent
+          
+          # ================================================================
+          # PORTS
+          # ================================================================
+          
+          ports:
+            - name: http
+              containerPort: 80
+              protocol: TCP
+            # For HTTPS (if SSL termination added later):
+            # - name: https
+            #   containerPort: 443
+            #   protocol: TCP
+          
+          # ================================================================
+          # HEALTH CHECKS
+          # ================================================================
+          # Kubernetes uses these probes to monitor pod health and restart if needed
+          
+          # livenessProbe: Check if pod is still alive (restart if fails 3 times)
+          # Used to detect hung processes and trigger automatic restart
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10    # Wait 10s after container start before first probe
+            periodSeconds: 10          # Check every 10 seconds
+            timeoutSeconds: 5          # Fail probe if no response within 5s
+            failureThreshold: 3        # Restart after 3 consecutive failures
+          
+          # readinessProbe: Check if pod is ready to receive traffic
+          # Used by load balancer to determine if pod should be in service backends
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5     # Check starting 5s after container start
+            periodSeconds: 10          # Check every 10 seconds
+            timeoutSeconds: 5          # Fail if no response within 5s
+            failureThreshold: 3        # Mark unready after 3 failures
+          
+          # startupProbe: Check if application has finished starting up
+          # For apps that need variable startup time (not typical for NGINX)
+          # Commented out for simplicity (livenessProbe + readinessProbe sufficient)
+          # startupProbe:
+          #   httpGet:
+          #     path: /health
+          #     port: http
+          #   failureThreshold: 30
+          #   periodSeconds: 10
+          
+          # ================================================================
+          # RESOURCE REQUESTS & LIMITS
+          # ================================================================
+          # Kubernetes uses requests for scheduling (reserves capacity)
+          # Limits prevent pods from consuming unlimited resources
+          
+          resources:
+            requests:
+              # Reserved CPU (1000m = 1 full core, 500m = 0.5 core)
+              # HPA metrics are based on actual usage vs. requested capacity
+              cpu: 500m
+              # Reserved memory (request must be > peak expected usage)
+              memory: 256Mi
+            limits:
+              # Maximum CPU (brief bursts allowed above limit, then throttled)
+              # High-throughput proxy: 2000m (2 cores) for proper performance
+              cpu: 2000m
+              # Maximum memory (if exceeded, pod is OOMKilled)
+              # Keep limit > request (request is guarantee, limit is hard cap)
+              memory: 512Mi
+          
+          # ================================================================
+          # ENVIRONMENT VARIABLES
+          # ================================================================
+          # Can be used to configure application behavior (if app reads them)
+          
+          env:
+            - name: NGINX_WORKERS
+              value: "auto"
+            - name: MODSECURITY_ENABLED
+              value: "true"
+            - name: LOG_LEVEL
+              value: "warn"
+          
+          # ================================================================
+          # VOLUME MOUNTS
+          # ================================================================
+          # Mount ConfigMap files into container filesystem
+          # This allows configuration changes without container rebuild
+          
+          volumeMounts:
+            # Mount NGINX configuration from ConfigMap
+            - name: nginx-config
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+              readOnly: true
+            
+            # Mount default site configuration
+            - name: nginx-config
+              mountPath: /etc/nginx/sites-enabled/default
+              subPath: default-site.conf
+              readOnly: true
+            
+            # Mount ModSecurity configuration from ConfigMap
+            - name: modsecurity-config
+              mountPath: /etc/nginx/modsecurity/modsec_default.conf
+              subPath: modsec_default.conf
+              readOnly: true
+            
+            # Mount CRS setup configuration
+            - name: modsecurity-config
+              mountPath: /usr/share/modsecurity-crs/crs-setup.conf
+              subPath: crs-setup.conf
+              readOnly: true
+            
+            # Mount log directory (emptyDir for pod lifetime, not persistent)
+            - name: log-volume
+              mountPath: /var/log/nginx
+            - name: modsec-log-volume
+              mountPath: /var/log/modsecurity
+          
+          # ================================================================
+          # SECURITY CONTEXT (Container-level)
+          # ================================================================
+          # Override pod-level security context if needed
+          
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false  # NGINX needs to write logs
+            capabilities:
+              drop:
+                - ALL
+              add:
+                - NET_BIND_SERVICE  # Needed to bind to port 80
+      
+      # ====================================================================
+      # VOLUMES
+      # ====================================================================
+      # Define volumes referenced by volumeMounts above
+      
+      volumes:
+        # ConfigMap containing NGINX and ModSecurity configurations
+        - name: nginx-config
+          configMap:
+            name: ocean-config
+            items:
+              - key: nginx.conf
+                path: nginx.conf
+              - key: default-site.conf
+                path: default-site.conf
+              - key: modsec_default.conf
+                path: modsec_default.conf
+            defaultMode: 0644  # Read-only for containers
+        
+        # ConfigMap for ModSecurity CRS configuration
+        - name: modsecurity-config
+          configMap:
+            name: ocean-config
+            items:
+              - key: modsec_default.conf
+                path: modsec_default.conf
+              - key: crs-setup.conf
+                path: crs-setup.conf
+            defaultMode: 0644
+        
+        # Temporary log storage (ephemeral, lost on pod restart)
+        # In production: use PersistentVolume or centralized logging (ELK, Loki)
+        - name: log-volume
+          emptyDir:
+            sizeLimit: 1Gi  # Log dir max size (prevent runaway logs)
+        
+        - name: modsec-log-volume
+          emptyDir:
+            sizeLimit: 2Gi  # ModSecurity audit logs can be large
+      
+      # ====================================================================
+      # TERMINATION GRACE PERIOD
+      # ====================================================================
+      # Time Kubernetes waits for pod to shut down gracefully before force-killing
+      terminationGracePeriodSeconds: 30
+      
+      # ====================================================================
+      # DNS POLICY
+      # ====================================================================
+      # ClusterFirst = use cluster DNS first, then host DNS (default)
+      dnsPolicy: ClusterFirst
+
+---
+# Notes on Deployment Behavior:
+#
+# 1. Initial State:
+#    - Kubernetes creates 2 pods (as per replicas: 2)
+#    - Scheduler places pods on different nodes (pod anti-affinity preferred)
+#    - Each pod runs NGINX container with mounted configs from ConfigMap
+#
+# 2. Health Monitoring:
+#    - readinessProbe: Checks /health endpoint (curl localhost/health)
+#    - If readiness fails, pod removed from load balancer (but not restarted)
+#    - If liveness fails 3 times, Kubernetes restarts the pod
+#
+# 3. Rolling Updates:
+#    - Change image tag -> kubectl set image deployment/ocean ocean=ocean:v2
+#    - Old pods gracefully shutdown (30s termination grace period)
+#    - New pods start using updated image
+#    - maxUnavailable=1, maxSurge=1 keeps service available during update
+#
+# 4. Auto-Scaling (via HPA):
+#    - HPA watches CPU and memory metrics
+#    - If CPU > 70% or Memory > 80%, scale up (add replicas)
+#    - If metrics drop below threshold, scale down
+#    - Min: 2 replicas, Max: 10 replicas (see hpa.yaml)
+#
+# 5. Configuration Changes:
+#    - kubectl edit configmap ocean-config
+#    - Restart pods: kubectl rollout restart deployment ocean
+#    - Pods automatically mount updated ConfigMap files
+#    - NGINX reloads config on restart (no downtime with 2+ replicas + load balancer)
+#
+# Common Debugging Commands:
+#   kubectl logs deployment/ocean -f          # Stream logs from all pods
+#   kubectl describe deployment ocean         # See deployment events
+#   kubectl get pods -l app=ocean -w          # Watch pod status changes
+#   kubectl exec <pod> -- nginx -t            # Test NGINX config syntax
+#   kubectl top pods -l app=ocean             # Show current CPU/memory usage (requires metrics-server)
