@@ -14,64 +14,9 @@ This guide explains how to manage SSL certificates in a Project Ocean cluster wi
 
 ## Architecture
 
-### Certificate Storage
+### Certificate Storage & Synchronization Flow
 
-```
-Master Node (VIP Active)
-  └─ /etc/nginx/certs/
-     ├─ private/
-     │  ├─ ocean.key                 # Primary private key
-     │  └─ sample.key                # Sample/test key
-     ├─ public/
-     │  ├─ ocean.crt                 # Primary certificate
-     │  └─ sample.crt                # Sample/test cert
-     └─ archive/
-        ├─ ocean.crt.20260419-120000 # Versioned backups
-        └─ ocean.key.20260419-120000
-
-Passive Nodes (2, 3, ...)
-  └─ /etc/nginx/certs/              # Exact mirror via rsync
-     [same structure as above]
-```
-
-### Synchronization Flow
-
-```
-Certificate Update Event
-  ↓
-Update on Primary Node (VIP active)
-  ↓
-Archive old cert (timestamped)
-  ↓
-Deploy new cert locally
-  ↓
-Rsync to all passive nodes
-  ↓
-Reload NGINX gracefully (no restart)
-  ↓
-All nodes now have new cert
-  ↓
-If failover occurs → VIP moves to node with cert already synced
-```
-
-### Failover Scenario
-
-```
-Node-1 (Primary, VIP active)         Node-2 (Standby, Passive)
-├─ ocean.crt [CURRENT]               ├─ ocean.crt [SYNCED]
-└─ Running NGINX                     └─ NGINX stopped
-
-[Node-1 Crashes or Restarts]
-  ↓
-Corosync detects heartbeat loss (5s)
-  ↓
-Pacemaker triggers failover
-  ↓
-Node-2 (already has current certs)
-├─ VIP migrates to Node-2
-├─ NGINX starts on Node-2
-└─ Connections resume within 10s
-```
+![Certificate Sync Flow](../diagrams/certificate-sync-flow.svg)
 
 ---
 

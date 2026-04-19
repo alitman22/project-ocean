@@ -1,0 +1,228 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="0 0 1200 700" xmlns="http://www.w3.org/2000/svg">
+  <!-- Title -->
+  <text x="600" y="35" font-size="28" font-weight="bold" text-anchor="middle" fill="#222">
+    Performance Scaling: HPA Behavior & Throughput
+  </text>
+  
+  <!-- Defs -->
+  <defs>
+    <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="2" dy="2" stdDeviation="3" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+  
+  <!-- LEFT CHART: Throughput vs Pod Count -->
+  <g>
+    <!-- Title -->
+    <text x="300" y="80" font-size="16" font-weight="bold" fill="#1976d2">Throughput Scaling (Linear)</text>
+    
+    <!-- Y-axis label -->
+    <text x="30" y="150" font-size="12" fill="#555" text-anchor="middle">Throughput</text>
+    <text x="30" y="170" font-size="12" fill="#555" text-anchor="middle">(req/sec)</text>
+    
+    <!-- Y-axis -->
+    <line x1="60" y1="80" x2="60" y2="430" stroke="#333" stroke-width="2"/>
+    <line x1="55" y1="80" x2="65" y2="80" stroke="#333" stroke-width="1"/>
+    <text x="50" y="85" font-size="11" fill="#555" text-anchor="end">1000k</text>
+    
+    <line x1="55" y1="155" x2="65" y2="155" stroke="#333" stroke-width="1"/>
+    <text x="50" y="160" font-size="11" fill="#555" text-anchor="end">800k</text>
+    
+    <line x1="55" y1="230" x2="65" y2="230" stroke="#333" stroke-width="1"/>
+    <text x="50" y="235" font-size="11" fill="#555" text-anchor="end">600k</text>
+    
+    <line x1="55" y1="305" x2="65" y2="305" stroke="#333" stroke-width="1"/>
+    <text x="50" y="310" font-size="11" fill="#555" text-anchor="end">400k</text>
+    
+    <line x1="55" y1="380" x2="65" y2="380" stroke="#333" stroke-width="1"/>
+    <text x="50" y="385" font-size="11" fill="#555" text-anchor="end">200k</text>
+    
+    <line x1="55" y1="430" x2="65" y2="430" stroke="#333" stroke-width="1"/>
+    <text x="50" y="435" font-size="11" fill="#555" text-anchor="end">0</text>
+    
+    <!-- X-axis -->
+    <line x1="60" y1="430" x2="510" y2="430" stroke="#333" stroke-width="2"/>
+    
+    <!-- X-axis labels and ticks -->
+    <line x1="120" y1="425" x2="120" y2="435" stroke="#333" stroke-width="1"/>
+    <text x="120" y="450" font-size="11" fill="#555" text-anchor="middle">2 pods</text>
+    
+    <line x1="180" y1="425" x2="180" y2="435" stroke="#333" stroke-width="1"/>
+    <text x="180" y="450" font-size="11" fill="#555" text-anchor="middle">4 pods</text>
+    
+    <line x1="240" y1="425" x2="240" y2="435" stroke="#333" stroke-width="1"/>
+    <text x="240" y="450" font-size="11" fill="#555" text-anchor="middle">6 pods</text>
+    
+    <line x1="300" y1="425" x2="300" y2="435" stroke="#333" stroke-width="1"/>
+    <text x="300" y="450" font-size="11" fill="#555" text-anchor="middle">8 pods</text>
+    
+    <line x1="360" y1="425" x2="360" y2="435" stroke="#333" stroke-width="1"/>
+    <text x="360" y="450" font-size="11" fill="#555" text-anchor="middle">10 pods</text>
+    
+    <!-- X-axis label -->
+    <text x="320" y="475" font-size="12" fill="#555" text-anchor="middle">Pod Replica Count</text>
+    
+    <!-- Grid lines -->
+    <line x1="60" y1="155" x2="510" y2="155" stroke="#ddd" stroke-width="1" opacity="0.5"/>
+    <line x1="60" y1="230" x2="510" y2="230" stroke="#ddd" stroke-width="1" opacity="0.5"/>
+    <line x1="60" y1="305" x2="510" y2="305" stroke="#ddd" stroke-width="1" opacity="0.5"/>
+    <line x1="60" y1="380" x2="510" y2="380" stroke="#ddd" stroke-width="1" opacity="0.5"/>
+    
+    <!-- Data line (linear scaling) -->
+    <polyline points="120,380 180,305 240,230 300,155 360,80" 
+              stroke="#1976d2" stroke-width="3" fill="none" stroke-linejoin="round"/>
+    
+    <!-- Data points with circles -->
+    <circle cx="120" cy="380" r="4" fill="#1976d2"/>
+    <circle cx="180" cy="305" r="4" fill="#1976d2"/>
+    <circle cx="240" cy="230" r="4" fill="#1976d2"/>
+    <circle cx="300" cy="155" r="4" fill="#1976d2"/>
+    <circle cx="360" cy="80" r="4" fill="#1976d2"/>
+    
+    <!-- Annotations -->
+    <text x="120" y="410" font-size="10" fill="#1976d2" font-weight="bold" text-anchor="middle">100k</text>
+    <text x="180" y="330" font-size="10" fill="#1976d2" font-weight="bold" text-anchor="middle">200k</text>
+    <text x="240" y="255" font-size="10" fill="#1976d2" font-weight="bold" text-anchor="middle">300k</text>
+    <text x="300" y="180" font-size="10" fill="#1976d2" font-weight="bold" text-anchor="middle">400k</text>
+    <text x="360" y="105" font-size="10" fill="#1976d2" font-weight="bold" text-anchor="middle">500k</text>
+  </g>
+  
+  <!-- RIGHT CHART: HPA Scaling Timeline -->
+  <g>
+    <!-- Title -->
+    <text x="900" y="80" font-size="16" font-weight="bold" fill="#388e3c">HPA Scaling Events Timeline</text>
+    
+    <!-- Y-axis label -->
+    <text x="730" y="150" font-size="12" fill="#555" text-anchor="middle">Pod</text>
+    <text x="730" y="170" font-size="12" fill="#555" text-anchor="middle">Count</text>
+    
+    <!-- Y-axis -->
+    <line x1="760" y1="80" x2="760" y2="430" stroke="#333" stroke-width="2"/>
+    
+    <!-- Y-axis labels and ticks -->
+    <line x1="755" y1="80" x2="765" y2="80" stroke="#333" stroke-width="1"/>
+    <text x="750" y="85" font-size="11" fill="#555" text-anchor="end">10</text>
+    
+    <line x1="755" y1="155" x2="765" y2="155" stroke="#333" stroke-width="1"/>
+    <text x="750" y="160" font-size="11" fill="#555" text-anchor="end">8</text>
+    
+    <line x1="755" y1="230" x2="765" y2="230" stroke="#333" stroke-width="1"/>
+    <text x="750" y="235" font-size="11" fill="#555" text-anchor="end">6</text>
+    
+    <line x1="755" y1="305" x2="765" y2="305" stroke="#333" stroke-width="1"/>
+    <text x="750" y="310" font-size="11" fill="#555" text-anchor="end">4</text>
+    
+    <line x1="755" y1="380" x2="765" y2="380" stroke="#333" stroke-width="1"/>
+    <text x="750" y="385" font-size="11" fill="#555" text-anchor="end">2</text>
+    
+    <!-- X-axis (time based) -->
+    <line x1="760" y1="430" x2="1150" y2="430" stroke="#333" stroke-width="2"/>
+    
+    <!-- X-axis labels -->
+    <line x1="790" y1="425" x2="790" y2="435" stroke="#333" stroke-width="1"/>
+    <text x="790" y="450" font-size="11" fill="#555" text-anchor="middle">T0: Normal</text>
+    
+    <line x1="860" y1="425" x2="860" y2="435" stroke="#333" stroke-width="1"/>
+    <text x="860" y="450" font-size="11" fill="#555" text-anchor="middle">Spike</text>
+    
+    <line x1="950" y1="425" x2="950" y2="435" stroke="#333" stroke-width="1"/>
+    <text x="950" y="450" font-size="11" fill="#555" text-anchor="middle">Scaling</text>
+    
+    <line x1="1050" y1="425" x2="1050" y2="435" stroke="#333" stroke-width="1"/>
+    <text x="1050" y="450" font-size="11" fill="#555" text-anchor="middle">Settled</text>
+    
+    <line x1="1120" y1="425" x2="1120" y2="435" stroke="#333" stroke-width="1"/>
+    <text x="1120" y="450" font-size="11" fill="#555" text-anchor="middle">Drop</text>
+    
+    <!-- X-axis label -->
+    <text x="950" y="475" font-size="12" fill="#555" text-anchor="middle">Time →</text>
+    
+    <!-- Grid lines -->
+    <line x1="760" y1="155" x2="1150" y2="155" stroke="#ddd" stroke-width="1" opacity="0.5"/>
+    <line x1="760" y1="230" x2="1150" y2="230" stroke="#ddd" stroke-width="1" opacity="0.5"/>
+    <line x1="760" y1="305" x2="1150" y2="305" stroke="#ddd" stroke-width="1" opacity="0.5"/>
+    <line x1="760" y1="380" x2="1150" y2="380" stroke="#ddd" stroke-width="1" opacity="0.5"/>
+    
+    <!-- Timeline path -->
+    <!-- Normal state: 2 pods -->
+    <line x1="790" y1="380" x2="860" y2="380" stroke="#388e3c" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="790" cy="380" r="3" fill="#388e3c"/>
+    <text x="815" y="370" font-size="9" fill="#388e3c">2 pods (idle)</text>
+    
+    <!-- Scale-up phase (aggressive) -->
+    <polyline points="860,380 880,355 900,305 920,230 940,190" 
+              stroke="#f57f17" stroke-width="3" fill="none" stroke-linejoin="round"/>
+    <circle cx="860" cy="380" r="3" fill="#f57f17"/>
+    <circle cx="940" cy="190" r="4" fill="#f57f17" stroke="#f57f17" stroke-width="2"/>
+    <text x="900" y="360" font-size="9" fill="#f57f17" font-weight="bold">15s stabilization</text>
+    <text x="910" y="245" font-size="9" fill="#f57f17">+50% or +2 pods</text>
+    <text x="915" y="200" font-size="10" font-weight="bold" fill="#f57f17">8 pods ← Max reached</text>
+    
+    <!-- Stable state -->
+    <line x1="940" y1="190" x2="1050" y2="190" stroke="#388e3c" stroke-width="3"/>
+    <circle cx="1050" cy="190" r="3" fill="#388e3c"/>
+    <text x="990" y="170" font-size="9" fill="#388e3c">Sustained high load</text>
+    
+    <!-- Scale-down phase (conservative) -->
+    <polyline points="1050,190 1070,220 1090,290 1120,380" 
+              stroke="#9c27b0" stroke-width="3" fill="none" stroke-linejoin="round"/>
+    <circle cx="1120" cy="380" r="3" fill="#9c27b0"/>
+    <text x="1070" y="290" font-size="9" fill="#9c27b0">300s stabilization</text>
+    <text x="1090" y="330" font-size="9" fill="#9c27b0">-1 pod/min</text>
+    <text x="1100" y="405" font-size="9" fill="#9c27b0">Back to 2 pods</text>
+  </g>
+  
+  <!-- Bottom: Performance Metrics Table -->
+  <g>
+    <rect x="50" y="530" width="1100" height="140" rx="5" fill="#ecf0f1" stroke="#34495e" stroke-width="1" filter="url(#shadow)"/>
+    
+    <text x="600" y="555" font-size="14" font-weight="bold" text-anchor="middle" fill="#222">Performance Characteristics</text>
+    
+    <!-- Table headers -->
+    <line x1="60" y1="565" x2="1140" y2="565" stroke="#34495e" stroke-width="1"/>
+    
+    <!-- Column 1: Pod Count -->
+    <text x="120" y="585" font-size="11" font-weight="bold" fill="#222">Pod Count</text>
+    <text x="120" y="605" font-size="10" fill="#555">2 pods</text>
+    <text x="120" y="625" font-size="10" fill="#555">4 pods</text>
+    <text x="120" y="645" font-size="10" fill="#555">8-10 pods</text>
+    
+    <!-- Column 2: Throughput -->
+    <text x="240" y="585" font-size="11" font-weight="bold" fill="#222">Throughput</text>
+    <text x="240" y="605" font-size="10" fill="#555">100-200k req/sec</text>
+    <text x="240" y="625" font-size="10" fill="#555">200-400k req/sec</text>
+    <text x="240" y="645" font-size="10" fill="#555">500-1000k req/sec</text>
+    
+    <!-- Column 3: Latency (p99) -->
+    <text x="480" y="585" font-size="11" font-weight="bold" fill="#222">Latency (p99)</text>
+    <text x="480" y="605" font-size="10" fill="#555">&lt;10ms</text>
+    <text x="480" y="625" font-size="10" fill="#555">&lt;15ms</text>
+    <text x="480" y="645" font-size="10" fill="#555">&lt;20ms</text>
+    
+    <!-- Column 4: CPU/Pod -->
+    <text x="700" y="585" font-size="11" font-weight="bold" fill="#222">CPU per Pod</text>
+    <text x="700" y="605" font-size="10" fill="#555">1000-1500m (50% spike)</text>
+    <text x="700" y="625" font-size="10" fill="#555">800-1000m (40% load)</text>
+    <text x="700" y="645" font-size="10" fill="#555">500-700m (normal)</text>
+    
+    <!-- Column 5: Use Case -->
+    <text x="950" y="585" font-size="11" font-weight="bold" fill="#222">Typical Use Case</text>
+    <text x="950" y="605" font-size="9" fill="#555">HA baseline minimum</text>
+    <text x="950" y="625" font-size="9" fill="#555">Peak production load</text>
+    <text x="950" y="645" font-size="9" fill="#555">Max capacity (add cluster)</text>
+  </g>
+  
+  <!-- Legend -->
+  <g>
+    <text x="50" y="500" font-size="11" fill="#555">Legend:</text>
+    <line x1="50" y1="505" x2="75" y2="505" stroke="#1976d2" stroke-width="3"/>
+    <text x="85" y="510" font-size="10" fill="#555">Linear throughput scaling</text>
+    
+    <line x1="350" y1="505" x2="375" y2="505" stroke="#f57f17" stroke-width="3"/>
+    <text x="385" y="510" font-size="10" fill="#555">Aggressive scale-up (15s)</text>
+    
+    <line x1="700" y1="505" x2="725" y2="505" stroke="#9c27b0" stroke-width="3"/>
+    <text x="735" y="510" font-size="10" fill="#555">Conservative scale-down (300s)</text>
+  </g>
+</svg>

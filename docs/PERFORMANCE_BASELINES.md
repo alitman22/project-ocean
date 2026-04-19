@@ -13,6 +13,12 @@ This document provides performance expectations, benchmarking methodology, and t
 
 ## Hardware Assumptions
 
+### Visual Performance Overview
+
+![Performance Scaling Diagram](../diagrams/performance-scaling.svg)
+
+### Hardware Specifications
+
 These baselines assume:
 
 | Component | Spec | Notes |
