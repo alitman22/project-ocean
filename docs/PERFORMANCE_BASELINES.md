@@ -15,7 +15,24 @@ This document provides performance expectations, benchmarking methodology, and t
 
 ### Visual Performance Overview
 
-![Performance Scaling Diagram](../diagrams/performance-scaling.svg)
+```mermaid
+flowchart LR
+  subgraph throughput[Throughput Scaling]
+    p2[2 pods\n100-200k req/sec]
+    p4[4 pods\n200-400k req/sec]
+    p6[6 pods\n300-600k req/sec]
+    p10[10 pods\n500-1000k req/sec]
+    p2 --> p4 --> p6 --> p10
+  end
+
+  spike[Traffic spike] --> hpa[HPA observes CPU / memory]
+  hpa --> up[Scale up\n15-30 seconds]
+  up --> steady[Higher steady-state capacity]
+  steady --> down[Scale down\n300-360 seconds]
+
+  p4 -. typical peak .- steady
+  p10 -. max configured replicas .- steady
+```
 
 ### Hardware Specifications
 

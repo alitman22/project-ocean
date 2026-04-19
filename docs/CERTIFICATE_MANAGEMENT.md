@@ -16,7 +16,22 @@ This guide explains how to manage SSL certificates in a Project Ocean cluster wi
 
 ### Certificate Storage & Synchronization Flow
 
-![Certificate Sync Flow](../diagrams/certificate-sync-flow.svg)
+```mermaid
+flowchart TD
+  gen[Generate or obtain certificate\nOpenSSL / Let's Encrypt] --> store[Store in /etc/nginx/certs]
+  store --> primary[Primary node\nVIP active\nNew cert installed]
+
+  primary --> sync2[rsync over SSH to Node 02]
+  primary --> sync3[rsync over SSH to Node 03]
+
+  sync2 --> node2[Secondary node 02\nCertificate synced]
+  sync3 --> node3[Secondary node 03\nCertificate synced]
+
+  node2 --> reload[Reload NGINX on all nodes\nZero downtime]
+  node3 --> reload
+
+  reload --> failover[If primary fails later,\nsecondary already has current certificate]
+```
 
 ---
 

@@ -26,6 +26,9 @@
 - [File Structure](#file-structure)
 - [FAQ](#faq)
 - [Support & Resources](#support--resources)
+- [Version History & Changelog](#version-history--changelog)
+- [License & Attribution](#license--attribution)
+- [Getting Help](#getting-help)
 
 ---
 
@@ -115,34 +118,93 @@ curl http://<EXTERNAL-IP>/health  # After LoadBalancer assigns IP
 
 ### System Overview
 
-![System Architecture Overview](diagrams/architecture-overview.svg)
+```mermaid
+flowchart TD
+  client[External Clients / Internet] --> lb[Load Balancer\nMetalLB / ELB / Azure LB]
+  lb --> svc[Kubernetes Service]
+
+  subgraph pods[Ocean Pods]
+    pod1[Ocean Pod 1\nReady / Live]
+    pod2[Ocean Pod 2\nReady / Live]
+    podn[Ocean Pod N\nAuto-scaled 2-10]
+  end
+
+  svc --> pod1
+  svc --> pod2
+  svc --> podn
+
+  subgraph internals[Per-Pod Request Path]
+    nginx[NGINX Worker]
+    modsec[ModSecurity + CRS]
+    backend[Backend App / Upstream]
+    nginx --> modsec --> backend
+  end
+
+  pod1 -. serves through .-> nginx
+  pod2 -. serves through .-> nginx
+  podn -. serves through .-> nginx
+
+  hpa[HPA\nCPU 70% / Memory 80%] -. monitors .-> pod1
+  hpa -. monitors .-> pod2
+  hpa -. scales .-> podn
+
+  cfg[ConfigMap\nocean-config] -. injects config .-> pod1
+  cfg -. injects config .-> pod2
+  cfg -. injects config .-> podn
+```
 
 ### Bare-Metal Clustering (Corosync/Pacemaker)
 
-![Failover Scenario](diagrams/failover-scenario.svg)
+```mermaid
+flowchart LR
+  subgraph normal[Normal Operation]
+    n1[Node 1\n192.168.1.100\nCorosync / Pacemaker / NGINX\nVIP 192.168.1.110 ACTIVE]
+    n2[Node 2\n192.168.1.101\nCorosync / Pacemaker / NGINX standby\nWaiting for VIP]
+    n1 -. heartbeat .- n2
+  end
+
+  crash[Primary node failure] --> detect[Heartbeat lost in ~5s]
+  detect --> failover[Pacemaker triggers failover]
+
+  subgraph recovered[Recovered State]
+    f1[Node 1\nFAILED / DOWN]
+    f2[Node 2\nNGINX running\nVIP 192.168.1.110 MOVED HERE]
+  end
+
+  failover --> f2
+  f2 --> resume[Traffic resumes in ~10-12s]
 ```
 
 ### Component Interaction
 
-```
-REQUEST FLOW:
-Client → Load Balancer → Kube-Proxy (iptables) → Service ClusterIP
- → Pod IP → NGINX Worker → ModSecurity (threat check) 
- → Upstream Proxy → Backend App → Response → Client
+```mermaid
+flowchart TD
+  subgraph request[Request Flow]
+    rq1[Client] --> rq2[Load Balancer]
+    rq2 --> rq3[Kube-Proxy / Service]
+    rq3 --> rq4[Ocean Pod]
+    rq4 --> rq5[NGINX Worker]
+    rq5 --> rq6[ModSecurity threat check]
+    rq6 --> rq7[Upstream Proxy]
+    rq7 --> rq8[Backend App]
+    rq8 --> rq9[Response to client]
+  end
 
-SCALING FLOW:
-CPU spike (>70%) → HPA detected → 
-  Desired replicas = current × (actual% / target%) →
-  K8s scheduler places new pod → 
-  Docker pulls image → Container starts → 
-  Readiness probe passes → Load balancer includes pod → 
-  Traffic distributed to new pod
+  subgraph scaling[Scaling Flow]
+    sc1[CPU spike above 70%] --> sc2[HPA detects pressure]
+    sc2 --> sc3[Desired replicas recalculated]
+    sc3 --> sc4[Scheduler places new pod]
+    sc4 --> sc5[Image pulled and container starts]
+    sc5 --> sc6[Readiness probe passes]
+    sc6 --> sc7[Load balancer includes pod]
+  end
 
-FAILOVER FLOW (Bare-Metal):
-Primary node dies → Corosync heartbeat timeout (5s) →
-  Cluster detects → Pacemaker triggers failover →
-  VIP migrates to secondary (ARP announcement) →
-  Traffic seamlessly reroutes to secondary node
+  subgraph failover[Failover Flow]
+    fo1[Primary node dies] --> fo2[Corosync heartbeat timeout]
+    fo2 --> fo3[Pacemaker triggers failover]
+    fo3 --> fo4[VIP migrates to secondary]
+    fo4 --> fo5[Traffic rerouted automatically]
+  end
 ```
 
 ---
