@@ -306,6 +306,28 @@ echo "  tcp_fastopen:        $(sysctl -n net.ipv4.tcp_fastopen)"
 
 echo ""
 echo "[✓] System optimization complete!"
+
+# ============================================================================
+# SECTION 11: BINARY PATCH – Rename nginx → ocean
+# ============================================================================
+# sed performs a direct in-place byte replacement of every "nginx" string in
+# the compiled binary. Works because "nginx" and "ocean" are both 5 bytes;
+# no padding, relinking, or recompilation required.
+# Covers: Server token, process title, error page signatures, version string.
+
+echo ""
+echo "--- Binary patch: renaming nginx signature to 'ocean' ---"
+
+NGINX_BIN=$(which nginx 2>/dev/null || echo "")
+if [[ -z "$NGINX_BIN" ]]; then
+    echo "[!] nginx binary not found – install nginx first, then re-run this step:"
+    echo "      sed -i 's/nginx/ocean/g' \$(which nginx)"
+else
+    sed -i 's/nginx/ocean/g' "$NGINX_BIN"
+    echo "[✓] Binary patched: all 'nginx' strings replaced with 'ocean' in $NGINX_BIN"
+    echo "    Server token, process title, and error page signatures now read 'ocean'"
+fi
+
 echo ""
 echo "Next steps:"
 echo "  1. Ensure NGINX is using /etc/nginx/performance.conf snippet"

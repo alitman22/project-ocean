@@ -197,16 +197,19 @@ load_module modules/ngx_http_modsecurity_module.so;
 MODSEC_ENABLE
 
 # ============================================================================
-# LAYER 10: Obscure Server Signature (Rewrite to "Ocean")
+# LAYER 10: Binary Patch – Rename nginx → ocean
 # ============================================================================
+# sed replaces every occurrence of the 5-byte string "nginx" with the
+# 5-byte string "ocean" directly in the compiled binary.
+# Same-length replacement means no padding, relinking, or recompilation needed.
+# Covers: Server token, process title, error page signatures, and version string.
 
-# Extract NGINX binary location and patch the Server header signature
 RUN NGINX_BIN=$(which nginx) && \
-    sed -i 's/Server: nginx/Server: Ocean/g' "$NGINX_BIN" && \
-    echo "[✓] NGINX binary patched: Server header rewritten to 'Ocean'"
+    sed -i 's/nginx/ocean/g' "$NGINX_BIN" && \
+    echo "[✓] NGINX binary patched: all 'nginx' strings replaced with 'ocean' in $NGINX_BIN"
 
 # Verify the patch (optional, for debugging)
-# RUN strings $(which nginx) | grep -i "Server:" || echo "Signature may be in compiled form"
+# RUN strings $(which nginx) | grep -c 'ocean' && echo "Patch verified"
 
 # ============================================================================
 # LAYER 11: Create Health Check Script

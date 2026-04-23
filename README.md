@@ -178,32 +178,43 @@ flowchart LR
 ### Component Interaction
 
 ```mermaid
+%%{init: {"theme": "default", "themeVariables": {"fontSize": "18px"}, "flowchart": {"nodeSpacing": 40, "rankSpacing": 50}}}%%
 flowchart TD
-  subgraph request[Request Flow]
-    rq1[Client] --> rq2[Load Balancer]
-    rq2 --> rq3[Kube-Proxy / Service]
-    rq3 --> rq4[Ocean Pod]
-    rq4 --> rq5[NGINX Worker]
-    rq5 --> rq6[ModSecurity threat check]
-    rq6 --> rq7[Upstream Proxy]
-    rq7 --> rq8[Backend App]
-    rq8 --> rq9[Response to client]
+
+  subgraph request[" Request Flow "]
+    direction TB
+    rq1[Client]
+    rq2[Load Balancer]
+    rq3[Kube-Proxy / Service]
+    rq4[Ocean Pod]
+    rq5[NGINX Worker]
+    rq6[ModSecurity Check]
+    rq7[Upstream Proxy]
+    rq8[Backend App]
+    rq9[Response → Client]
+    rq1 --> rq2 --> rq3 --> rq4 --> rq5 --> rq6 --> rq7 --> rq8 --> rq9
   end
 
-  subgraph scaling[Scaling Flow]
-    sc1[CPU spike above 70%] --> sc2[HPA detects pressure]
-    sc2 --> sc3[Desired replicas recalculated]
-    sc3 --> sc4[Scheduler places new pod]
-    sc4 --> sc5[Image pulled and container starts]
-    sc5 --> sc6[Readiness probe passes]
-    sc6 --> sc7[Load balancer includes pod]
+  subgraph scaling[" HPA Scaling Flow "]
+    direction TB
+    sc1[CPU spike above 70%]
+    sc2[HPA detects pressure]
+    sc3[Replicas recalculated]
+    sc4[Scheduler places pod]
+    sc5[Container starts]
+    sc6[Readiness probe passes]
+    sc7[Pod added to load balancer]
+    sc1 --> sc2 --> sc3 --> sc4 --> sc5 --> sc6 --> sc7
   end
 
-  subgraph failover[Failover Flow]
-    fo1[Primary node dies] --> fo2[Corosync heartbeat timeout]
-    fo2 --> fo3[Pacemaker triggers failover]
-    fo3 --> fo4[VIP migrates to secondary]
-    fo4 --> fo5[Traffic rerouted automatically]
+  subgraph failover[" HA Failover Flow "]
+    direction TB
+    fo1[Primary node dies]
+    fo2[Corosync heartbeat lost]
+    fo3[Pacemaker triggers failover]
+    fo4[VIP migrates to secondary]
+    fo5[Traffic resumes automatically]
+    fo1 --> fo2 --> fo3 --> fo4 --> fo5
   end
 ```
 
