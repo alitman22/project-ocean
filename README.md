@@ -3,6 +3,7 @@
 ![Status](https://img.shields.io/badge/Status-Production%20Ready-brightgreen)
 ![License](https://img.shields.io/badge/License-Open%20Source-blue)
 ![Version](https://img.shields.io/badge/Version-1.0-blue)
+<img width="1536" height="1024" alt="image" src="https://github.com/user-attachments/assets/9d03efb5-4352-4fd2-9f83-2314640d286a" />
 
 **Project Ocean** is a complete, battle-hardened reverse proxy system featuring NGINX optimized for extreme throughput (>100k req/sec), ModSecurity WAF for threat detection, automated high-availability clustering, and intelligent Kubernetes auto-scaling. Deploy on bare-metal Ubuntu, Docker, or Kubernetes with zero-downtime failover and production-grade security.
 
