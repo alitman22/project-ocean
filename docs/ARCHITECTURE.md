@@ -13,50 +13,50 @@
                     │  GCP LB, or MetalLB)  │
                     └────────────┬──────────┘
                                  │
-        ┌────────────────────────┴─────────────────────────┐
+        ┌────────────────────────┴──────────────────────────┐
         │                                                   │
     ┌───▼───┐                                          ┌────▼────┐
-    │ Ocean │◄────────── Service (ClusterIP) ─────────│ Ocean   │
+    │ Ocean │◄────────── Service (ClusterIP) ──────────│ Ocean   │
     │ Pod-1 │ endpoint                                 │ Pod-2   │
     │ K8s   │                                          │ K8s     │
     └───┬───┘                                          └────┬────┘
         │                                                   │
-        │  ┌─────────────────────┐                        │
-        │  │ HorizontalPodAutosc │                        │
-        │  │ aler (HPA)          │                        │
-        │  │ Monitors: CPU >70%  │                        │
-        │  │ Mem >80% → Scale    │                        │
-        │  └─────────────────────┘                        │
+        │  ┌─────────────────────┐                          │
+        │  │ HorizontalPodAutosc │                          │
+        │  │ aler (HPA)          │                          │
+        │  │ Monitors: CPU >70%  │                          │
+        │  │ Mem >80% → Scale    │                          │
+        │  └─────────────────────┘                          │
         │                                                   │
-        ├── Replicas: 2-10 (dynamic via HPA) ─────────────┤
+        ├── Replicas: 2-10 (dynamic via HPA) ───────────────┤
         │                                                   │
     ┌───▼─────────────────────────────────────────────────▼────┐
     │         NGINX Reverse Proxy (High-Throughput)            │
-    │                                                           │
+    │                                                          │
     │  ┌─ Performance Tuning:                                  │
-    │  │  • worker_processes auto (8+ cores typical)          │
-    │  │  • worker_connections 20480 per worker              │
-    │  │  • TCP tuning: fast open, nopush/nodelay             │
-    │  │  • Keep-alive: 1000 reqs per connection              │
-    │  │  • File descriptor cache: 200k entries               │
-    │  └─ Expected: 50-100k req/sec per pod                   │
-    │                                                           │
-    │  ┌─ ModSecurity OWASP CRS:                              │
-    │  │  • Engine: DetectionOnly (safe baseline)             │
-    │  │  • Rules: 900+ covering XSS, SQLI, RFI, etc.        │
-    │  │  • Audit log: /var/log/modsecurity/audit.log         │
-    │  │  • Overhead: +10-15% CPU, +2-3ms latency             │
-    │  └─ Status: Monitors threats (not blocking initially)   │
-    │                                                           │
+    │  │  • worker_processes auto (8+ cores typical)           │
+    │  │  • worker_connections 20480 per worker                │
+    │  │  • TCP tuning: fast open, nopush/nodelay              │
+    │  │  • Keep-alive: 1000 reqs per connection               │
+    │  │  • File descriptor cache: 200k entries                │
+    │  └─ Expected: 50-100k req/sec per pod                    │
+    │                                                          │
+    │  ┌─ ModSecurity OWASP CRS:                               │
+    │  │  • Engine: DetectionOnly (safe baseline)              │
+    │  │  • Rules: 900+ covering XSS, SQLI, RFI, etc.          │
+    │  │  • Audit log: /var/log/modsecurity/audit.log          │
+    │  │  • Overhead: +10-15% CPU, +2-3ms latency              │
+    │  └─ Status: Monitors threats (not blocking initially)    │
+    │                                                          │
     │  ┌─ Health Checks:                                       │
     │  │  • /health → returns 200 OK                           │
-    │  │  • Used by K8s liveness/readiness probes             │
+    │  │  • Used by K8s liveness/readiness probes              │
     │  │  • Load balancer removes unresponsive pods            │
     │  └─ Graceful shutdown: 30s termination grace period      │
-    │                                                           │
-    └───┬─────────────────────────────────────────────────────┬──┘
-        │ HTTP/1.1 persistent upstreams                      │
-        │                                                     │
+    │                                                          │
+    └───┬───────────────────────────────────────────────────┬──┘
+        │ HTTP/1.1 persistent upstreams                     │
+        │                                                   │
     ┌───▼─────────────────────────┐              ┌──────────▼──────┐
     │  Kubernetes ConfigMap       │              │ Backend         │
     │  (Injected Config Files)    │              │ Application     │
