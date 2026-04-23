@@ -123,19 +123,19 @@
 │  192.168.1.100      │         │  192.168.1.101      │
 │                     │         │                     │
 │ • Corosync          │◄────────│ • Corosync          │
-│   (networking)      │   mcast  │   (networking)      │
-│ • Pacemaker         │   UDP 5405-6
+│   (networking)      │   mcast │   (networking)      │
+│ • Pacemaker         │   UDP 5405-6                  |
 │   (orchestration)   │◄────────│ • Pacemaker         │
-│ • NGINX             │   sync   │ • NGINX             │
+│ • NGINX             │   sync  │ • NGINX             │
 │ • etcd (optional)   │         │ • etcd (optional)   │
 │                     │         │                     │
-└──────────┬──────────┘         └──────────┬──────────┘
+└──────────┬──────────┘         └───────────┬─────────┘
            │ floating or                    │ floating or
            │ active only                    │ passive only
            │                                │
            └────────────┬───────────────────┘
                         │
-                   ┌────▼─────┐
+                   ┌────▼──────┐
                    │    VIP    │
                    │ 192.168.1.│
                    │   110     │
@@ -147,11 +147,11 @@
 
        ┌──────────────────────────────────────────┐
        │  If primary dies:                        │
-       │  1. Corosync cluster detects absence    │
-       │  2. Pacemaker triggers failover         │
-       │  3. VIP migrates to secondary via ARP   │
-       │  4. NGINX continues serving via VIP     │
-       │  Downtime: ~5-10 seconds                │
+       │  1. Corosync cluster detects absence     │
+       │  2. Pacemaker triggers failover          │
+       │  3. VIP migrates to secondary via ARP    │
+       │  4. NGINX continues serving via VIP      │
+       │  Downtime: ~5-10 seconds                 │
        └──────────────────────────────────────────┘
 ```
 
